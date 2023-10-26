@@ -24,6 +24,8 @@ fn main() {
 }
 */
 
+
+
 //P2
 /*
 fn add_chars_n(s: &mut String, c: char, x: u8) {
@@ -86,6 +88,7 @@ fn add_integer(mut s: String, mut n: i32, delimiter: char) -> String {
 
     s
 }
+
 
 
 fn main() {
