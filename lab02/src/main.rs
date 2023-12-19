@@ -1,5 +1,7 @@
 //P1
 /*
+
+
 fn add_chars_n(mut s: String, c: char, x: u8) -> String {
     let mut cnt = 0;
     while cnt < x {
