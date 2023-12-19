@@ -55,6 +55,7 @@ fn read_students() -> Result<(), io::Error> {
     for student in &students {
         if student.age == min_age {
             println!("{:?}", student);
+            
         }
     }
 
