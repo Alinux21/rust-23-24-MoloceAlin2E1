@@ -1,16 +1,23 @@
 use chrono::{DateTime, Utc};
 use serde_derive::Deserialize;
+
+use std::thread::sleep;
+use std::time::Duration;
+
 use std::io;
 use std::io::Write;
+
+use std::collections::HashSet;
+
 // use ureq::Error;
 
 #[derive(Debug, Deserialize)]
 struct PostList {
-    data: Childrens,
+    data: Children,
 }
 #[derive(Debug, Deserialize)]
 
-struct Childrens {
+struct Children {
     children: Vec<Child>,
 }
 #[derive(Debug, Deserialize)]
@@ -24,85 +31,123 @@ struct Post {
     title: String,
     permalink: String,
     created: f64,
+    id: String,
 }
 
-fn get_post_time(created:f64){
+use clap::Parser;
 
-    let dt: DateTime<Utc> = DateTime::from_timestamp(created as i64, 0).unwrap(); //2023-MM-DD T HH:MM:SS
-    
-        let time_of_posting = Utc::now() - dt;
+#[derive(Parser)]
+#[command(version, about = "args parsing example")]
+struct Args {
+    /// Subbreddit name
+    #[arg(long)]
+    subreddit: String,
 
-        if time_of_posting.num_weeks() < 4 && time_of_posting.num_weeks() > 0 {
-            if time_of_posting.num_weeks() == 1 {
-                println!("Posted 1 week ago");
-            } else {
-                println!("Posted {:?} weeks ago", time_of_posting.num_weeks());
-            }
-        } else if time_of_posting.num_days() < 7 && time_of_posting.num_days() > 0 {
-            if time_of_posting.num_days() == 1 {
-                println!("Posted 1 day ago");
-            } else {
-                println!("Posted {:?} days ago.", time_of_posting.num_days());
-            }
-        } else if time_of_posting.num_hours() < 24 && time_of_posting.num_hours() > 0 {
-            if time_of_posting.num_hours() == 1 {
-                println!("Posted 1 hour ago");
-            } else {
-                println!("Posted {:?} hours ago", time_of_posting.num_hours());
-            }
-        } else if time_of_posting.num_minutes() < 60 && time_of_posting.num_minutes() > 0 {
-            if time_of_posting.num_minutes() == 1 {
-                println!("Posted 1 minute ago");
-            } else {
-                println!("Posted {:?} minutes ago", time_of_posting.num_minutes());
-            }
-        } else if time_of_posting.num_seconds() < 60 {
-            println!("Posted just now");
-        }
-
-
-
+    /// Sort option (hot,new,top)
+    #[arg(long, default_value = "hot")]
+    sort: String,
 }
-
 
 fn main() -> Result<(), ureq::Error> {
-    println!("Redditor\n");
+    println!("\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n");
+    println!("=-=-=-=-=-=-=  Redditor  =-=-=-=-=-=-=-=\n");
 
-    print!("Enter the name of a subreddit:");
+    let mut buffer = String::new();
+    print!("No. of seconds for refresh rate:");
     std::io::stdout().flush().unwrap();
 
-    let mut subreddit_name = String::new();
     io::stdin()
-        .read_line(&mut subreddit_name)
-        .expect("Error at reading the subreddit name");
-    subreddit_name.pop();
+        .read_line(&mut buffer)
+        .expect("Error while reading from stdin");
+    let seconds: u64 = buffer.trim().parse().expect("Not an u64 value");
 
-    print!("Enter the desired sorting order:");
+    buffer = String::new();
+    print!("Number of refreshes:");
     std::io::stdout().flush().unwrap();
-
-    let mut ordering = String::new();
     io::stdin()
-        .read_line(&mut ordering)
-        .expect("Error at reading the sorting order");
-    ordering.pop();
+        .read_line(&mut buffer)
+        .expect("Error while reading from stdin");
+    let refreshes: u32 = buffer.trim().parse().expect("Not an u32 value");
+
+    let args = Args::parse();
+    let subreddit_name = args.subreddit;
+    let ordering = args.sort;
+
+    let domain: String = String::from("https://www.reddit.com/r/");
+
     let mut sorting_order = String::from("/");
     sorting_order = sorting_order + &ordering + ".json";
 
-    let domain: String = String::from("https://www.reddit.com/r/");
     let url = domain + &subreddit_name + &sorting_order;
 
     let body: String = ureq::get(&url).call()?.into_string()?;
     let postlist: PostList = serde_json::from_str(&body).expect("Error at deserializing");
 
+    println!(
+        "Showing posts for subbredit:{:?} sorting order:{:?};",
+        subreddit_name, ordering
+    );
+
+    let mut printed_posts_ids = HashSet::new();
+
     for post in postlist.data.children {
-        
         println!("\nTitle : {:?} ", post.data.title);
         let domain = String::from("https://www.reddit.com");
 
-        get_post_time(post.data.created);
+        let posting_data: DateTime<Utc> =
+            DateTime::from_timestamp(post.data.created as i64, 0).unwrap(); //2023-MM-DD T HH:MM:SS
+        let fmt_posting_data = posting_data.format("%d.%m.%Y at %R").to_string();
+        println!("Creation date:{:?}", fmt_posting_data);
 
         let url_to_post = domain + &post.data.permalink;
         println!("Link to post : {:?} ", url_to_post);
+
+        printed_posts_ids.insert(post.data.id.clone());
+    }
+
+    let mut count = 1;
+    println!("\nPrinting new posts:\n");
+    loop {
+        let body: String = ureq::get(&url)
+            .call()
+            .expect("Error fetching data")
+            .into_string()
+            .expect("Error converting to string");
+        let postlist: PostList = serde_json::from_str(&body).expect("Error at deserializing");
+
+        let mut new_post = 0;
+        for post in postlist.data.children {
+            if !printed_posts_ids.contains(&post.data.id) {
+                println!("\n=-=-=-=-=-=-=-=New post!=-=-=-=-=-=-=-=-=");
+                println!("\nTitle : {:?} ", post.data.title);
+
+                let domain = String::from("https://www.reddit.com");
+
+                let posting_data: DateTime<Utc> =
+                    DateTime::from_timestamp(post.data.created as i64, 0).unwrap();
+                let fmt_posting_data = posting_data.format("%d.%m.%Y at %R").to_string();
+                println!("Creation date:{:?}", fmt_posting_data);
+
+                let url_to_post = domain + &post.data.permalink;
+                println!("Link to post : {:?} \n", url_to_post);
+
+                printed_posts_ids.insert(post.data.id.clone());
+                new_post = 1;
+            }
+        }
+
+        sleep(Duration::from_secs(seconds));
+
+        if new_post == 0 {
+            println!(
+                "No new posts have been found. Next refresh in {} seconds. ({}/{})",
+                seconds, count, refreshes
+            );
+            count += 1;
+        }
+        if count == refreshes + 1 {
+            break;
+        }
     }
 
     Ok(())
