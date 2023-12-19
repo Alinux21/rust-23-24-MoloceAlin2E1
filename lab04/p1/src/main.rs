@@ -11,6 +11,7 @@ fn p1() -> Result<(), io::Error> {
             line.as_bytes().len()
         );
     }
+    
     Ok(())
 }
 
