@@ -1,32 +1,25 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde_derive::Deserialize;
-
-use std::thread::sleep;
-use std::time::Duration;
-
+use std::collections::HashSet;
+use std::error::Error;
 use std::io;
 use std::io::Write;
-
-use std::collections::HashSet;
-
-// use ureq::Error;
+use std::thread::sleep;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 struct PostList {
     data: Children,
 }
 #[derive(Debug, Deserialize)]
-
 struct Children {
     children: Vec<Child>,
 }
 #[derive(Debug, Deserialize)]
-
 struct Child {
     data: Post,
 }
 #[derive(Debug, Deserialize)]
-
 struct Post {
     title: String,
     permalink: String,
@@ -47,19 +40,37 @@ struct Args {
     #[arg(long, default_value = "hot")]
     sort: String,
 }
+fn print_post(post: &Child) {
+    println!("\nTitle : {:?} ", post.data.title);
+    let domain = String::from("https://www.reddit.com");
 
-fn main() -> Result<(), ureq::Error> {
+    let epoch_post_timestamp: DateTime<Utc> =
+        DateTime::from_timestamp(post.data.created as i64, 0).unwrap(); //2023-MM-DD T HH:MM:SS
+
+    let timezone_offset = FixedOffset::east_opt(2 * 3600).unwrap();
+
+    let dt = epoch_post_timestamp.with_timezone(&timezone_offset);
+    let fmt_posting_data = dt.format("%d.%m.%Y at %R").to_string();
+
+    println!("Creation date:{:?}", fmt_posting_data);
+
+    let url_to_post = domain + &post.data.permalink;
+    println!("Link to post : {:?} ", url_to_post);
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
     println!("\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n");
     println!("=-=-=-=-=-=-=  Redditor  =-=-=-=-=-=-=-=\n");
 
     let mut buffer = String::new();
-    print!("No. of seconds for refresh rate:");
+
+    print!("Number of seconds for refresh rate:");
     std::io::stdout().flush().unwrap();
 
     io::stdin()
         .read_line(&mut buffer)
         .expect("Error while reading from stdin");
-    let seconds: u64 = buffer.trim().parse().expect("Not an u64 value");
+    let seconds: u64 = buffer.trim().parse()?;
 
     buffer = String::new();
     print!("Number of refreshes:");
@@ -67,7 +78,7 @@ fn main() -> Result<(), ureq::Error> {
     io::stdin()
         .read_line(&mut buffer)
         .expect("Error while reading from stdin");
-    let refreshes: u32 = buffer.trim().parse().expect("Not an u32 value");
+    let refreshes: u32 = buffer.trim().parse()?;
 
     let args = Args::parse();
     let subreddit_name = args.subreddit;
@@ -81,8 +92,9 @@ fn main() -> Result<(), ureq::Error> {
     let url = domain + &subreddit_name + &sorting_order;
 
     let body: String = ureq::get(&url).call()?.into_string()?;
-    let postlist: PostList = serde_json::from_str(&body).expect("Error at deserializing");
+    let postlist: PostList = serde_json::from_str(&body)?;
 
+    println!("\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n");
     println!(
         "Showing posts for subbredit:{:?} sorting order:{:?};",
         subreddit_name, ordering
@@ -91,46 +103,22 @@ fn main() -> Result<(), ureq::Error> {
     let mut printed_posts_ids = HashSet::new();
 
     for post in postlist.data.children {
-        println!("\nTitle : {:?} ", post.data.title);
-        let domain = String::from("https://www.reddit.com");
-
-        let posting_data: DateTime<Utc> =
-            DateTime::from_timestamp(post.data.created as i64, 0).unwrap(); //2023-MM-DD T HH:MM:SS
-        let fmt_posting_data = posting_data.format("%d.%m.%Y at %R").to_string();
-        println!("Creation date:{:?}", fmt_posting_data);
-
-        let url_to_post = domain + &post.data.permalink;
-        println!("Link to post : {:?} ", url_to_post);
-
+        print_post(&post);
         printed_posts_ids.insert(post.data.id.clone());
     }
+    println!("\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n");
 
     let mut count = 1;
     println!("\nPrinting new posts:\n");
     loop {
-        let body: String = ureq::get(&url)
-            .call()
-            .expect("Error fetching data")
-            .into_string()
-            .expect("Error converting to string");
-        let postlist: PostList = serde_json::from_str(&body).expect("Error at deserializing");
+        let body: String = ureq::get(&url).call()?.into_string()?;
+        let postlist: PostList = serde_json::from_str(&body)?;
 
         let mut new_post = 0;
         for post in postlist.data.children {
             if !printed_posts_ids.contains(&post.data.id) {
                 println!("\n=-=-=-=-=-=-=-=New post!=-=-=-=-=-=-=-=-=");
-                println!("\nTitle : {:?} ", post.data.title);
-
-                let domain = String::from("https://www.reddit.com");
-
-                let posting_data: DateTime<Utc> =
-                    DateTime::from_timestamp(post.data.created as i64, 0).unwrap();
-                let fmt_posting_data = posting_data.format("%d.%m.%Y at %R").to_string();
-                println!("Creation date:{:?}", fmt_posting_data);
-
-                let url_to_post = domain + &post.data.permalink;
-                println!("Link to post : {:?} \n", url_to_post);
-
+                print_post(&post);
                 printed_posts_ids.insert(post.data.id.clone());
                 new_post = 1;
             }
@@ -149,6 +137,5 @@ fn main() -> Result<(), ureq::Error> {
             break;
         }
     }
-
     Ok(())
 }
